@@ -1,0 +1,74 @@
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+from datetime import datetime
+
+def interactive_seasonal_trading_tool():
+    # Get user inputs for the ticker symbol, period, and interval
+    ticker_symbol = input("Enter the ticker symbol (e.g., 'CL=F' for Crude Oil Futures): ")
+    period = input("Enter the period for historical data (e.g., '5y' for 5 years, '10y' for 10 years): ")
+
+    # Validate the period format
+    if not period.endswith(('d', 'mo', 'y')):
+        print(f"Invalid period '{period}'. Period must end with 'd', 'mo', or 'y' (e.g., '5y', '6mo').")
+        return
+
+    interval = input("Enter the data interval (e.g., '1mo' for 1 month, '1d' for 1 day): ")
+
+    # Validate the interval
+    valid_intervals = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
+    if interval not in valid_intervals:
+        print(f"Invalid interval '{interval}'. Valid intervals are: {valid_intervals}")
+        return
+
+    # Fetch historical data from Yahoo Finance
+    print(f"Fetching data for {ticker_symbol}...")
+    data = yf.download(ticker_symbol, period=period, interval=interval)
+
+    # Verify that data was fetched successfully
+    if data.empty:
+        print(f"No data found for {ticker_symbol}. Please check the ticker symbol and try again.")
+        return
+
+    # 52-week high and low
+    yearly_data = data.last("52w")
+    high_52week = yearly_data['High'].max()
+    low_52week = yearly_data['Low'].min()
+    print(f"52-week High: {high_52week}")
+    print(f"52-week Low: {low_52week}")
+
+    # Calculate monthly returns
+    data['Month'] = data.index.month
+    data['Year'] = data.index.year
+    data['Monthly Return'] = data['Adj Close'].pct_change()
+
+    # Group by month and year to calculate average monthly returns
+    monthly_returns = data.groupby(['Year', 'Month'])['Monthly Return'].mean().unstack()
+    historical_avg = monthly_returns.mean()
+
+    # Current month's performance
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    current_month_performance = data[(data.index.year == current_year) & (data.index.month == current_month)]['Monthly Return'].iloc[-1]
+
+    # Compare current performance with historical average
+    historical_month_avg = historical_avg[current_month]
+    performance_deviation = (current_month_performance - historical_month_avg) / abs(historical_month_avg) * 100
+
+    # Generate a signal based on the deviation
+    threshold = 5  # percent threshold to decide on the signal
+    if performance_deviation < -threshold:
+        signal = f"Short, as current performance is lower than historical average by {abs(performance_deviation):.2f}%"
+    elif performance_deviation > threshold:
+        signal = f"Long, as current performance is higher than historical average by {performance_deviation:.2f}%"
+    else:
+        signal = "Hold, as current performance is within the threshold of historical average"
+
+    print(signal)
+
+    # Plot the candlestick chart
+    mpf.plot(data[-60:], type='candle', style='charles', volume=True, title=f"{ticker_symbol} - Last 60 periods")
+
+# Run the interactive tool
+interactive_seasonal_trading_tool()
